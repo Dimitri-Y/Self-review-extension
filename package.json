@@ -2,7 +2,7 @@
   "name": "self-review",
   "displayName": "Self Review",
   "description": "Review your own changes: set a baseline, see added lines highlighted, approve or reject changes.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "license": "ISC",
   "engines": {
     "vscode": "^1.60.0"
@@ -10,60 +10,60 @@
   "main": "extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onCommand:selfReview.start",
-    "onCommand:selfReview.approve",
-    "onCommand:selfReview.rejectBlock",
-    "onCommand:selfReview.stop"
+    "onCommand:selfReview.startForFile",
+    "onCommand:selfReview.approveForFile",
+    "onCommand:selfReview.rejectBlockForFile",
+    "onCommand:selfReview.stopForFile"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "selfReview.start",
+        "command": "selfReview.startForFile",
         "title": "Self Review: Start (set baseline)"
       },
       {
-        "command": "selfReview.approve",
+        "command": "selfReview.approveForFile",
         "title": "Self Review: Approve changes (new baseline)"
       },
       {
-        "command": "selfReview.rejectBlock",
+        "command": "selfReview.rejectBlockForFile",
         "title": "Self Review: Reject all (revert to baseline)"
       },
       {
-        "command": "selfReview.stop",
+        "command": "selfReview.stopForFile",
         "title": "Self Review: Stop (clear baseline)"
       }
     ],
     "menus": {
       "editor/title/run": [
         {
-          "command": "selfReview.start",
+          "command": "selfReview.startForFile",
           "when": "editorTextFocus",
           "group": "selfReview@1"
         },
         {
-          "command": "selfReview.approve",
+          "command": "selfReview.approveForFile",
           "when": "editorTextFocus",
           "group": "selfReview@2"
         },
         {
-          "command": "selfReview.rejectBlock",
+          "command": "selfReview.rejectBlockForFile",
           "when": "editorTextFocus",
           "group": "selfReview@3"
         }
       ],
       "commandPalette": [
         {
-          "command": "selfReview.start"
+          "command": "selfReview.startForFile"
         },
         {
-          "command": "selfReview.approve"
+          "command": "selfReview.approveForFile"
         },
         {
-          "command": "selfReview.rejectBlock"
+          "command": "selfReview.rejectBlockForFile"
         },
         {
-          "command": "selfReview.stop"
+          "command": "selfReview.stopForFile"
         }
       ]
     },

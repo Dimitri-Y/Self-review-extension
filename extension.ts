@@ -2,109 +2,146 @@ import * as vscode from 'vscode';
 import DiffMatchPatch = require('diff-match-patch');
 
 let baseline: string | null = null;
+let targetUri: vscode.Uri | null = null;
 const dmp = new DiffMatchPatch();
-let decorationType: vscode.TextEditorDecorationType | null = null;
+
+let addedDecorationType: vscode.TextEditorDecorationType | null = null;
+let removedDecorationType: vscode.TextEditorDecorationType | null = null;
 let statusBarItem: vscode.StatusBarItem | null = null;
 
-function getDecorationColor(): string {
-  return vscode.workspace.getConfiguration('selfReview').get<string>('decorationBackgroundColor', 'rgba(0, 255, 0, 0.15)');
-}
-
-function createDecoration(): vscode.TextEditorDecorationType {
-  const color = getDecorationColor();
+function createAddedDecoration(): vscode.TextEditorDecorationType {
   return vscode.window.createTextEditorDecorationType({
-    backgroundColor: color,
+    backgroundColor: 'rgba(0, 255, 0, 0.25)',
     isWholeLine: true,
   });
 }
 
-function updateStatusBar(): void {
-  if (!vscode.workspace.getConfiguration('selfReview').get<boolean>('statusBar', true)) {
-    statusBarItem?.hide();
+function createRemovedDecoration(): vscode.TextEditorDecorationType {
+  return vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    after: {
+      contentText: '← видалено',
+      color: 'red',
+      margin: '0 0 0 1rem',
+    },
+  });
+}
+
+function updateStatusBar(editor?: vscode.TextEditor): void {
+  if (!statusBarItem) return;
+
+  if (!baseline || !targetUri) {
+    statusBarItem.hide();
     return;
   }
-  if (!statusBarItem) return;
-  if (baseline !== null) {
-    statusBarItem.text = '$(git-branch) Self Review: baseline set';
-    statusBarItem.tooltip = 'Self Review active. Use commands to Approve or Reject changes.';
-    statusBarItem.show();
+
+  if (editor && editor.document.uri.toString() === targetUri.toString()) {
+    const current = editor.document.getText();
+    const diffs = dmp.diff_main(baseline, current);
+    dmp.diff_cleanupSemantic(diffs);
+
+    const added = diffs.filter(([type]) => type === 1).length;
+    const removed = diffs.filter(([type]) => type === -1).length;
+
+    if (added > 0 || removed > 0) {
+      statusBarItem.text = `$(warning) Зміни: +${added}, -${removed}`;
+      statusBarItem.color = 'red';
+      statusBarItem.tooltip = 'Є відмінності від baseline';
+      statusBarItem.show();
+    } else {
+      statusBarItem.text = '$(check) Без змін';
+      statusBarItem.color = undefined;
+      statusBarItem.show();
+    }
   } else {
     statusBarItem.hide();
   }
 }
 
 function clearDecorations(): void {
-    for (const editor of vscode.window.visibleTextEditors) {
-      if (decorationType) {
-        editor.setDecorations(decorationType, []);
-      }
-    }
+  for (const editor of vscode.window.visibleTextEditors) {
+    addedDecorationType && editor.setDecorations(addedDecorationType, []);
+    removedDecorationType && editor.setDecorations(removedDecorationType, []);
   }
-  
+}
+
 function updateDecorations(): void {
-    if (!baseline) {
-      clearDecorations();
-      return;
-    }
-  
-    for (const editor of vscode.window.visibleTextEditors) {
-      const current = editor.document.getText();
-      const diffs = dmp.diff_main(baseline, current);
-      dmp.diff_cleanupSemantic(diffs);
-  
-      const ranges: vscode.Range[] = [];
-      let index = 0;
-  
-      for (const [type, text] of diffs) {
-        if (type === 1) {
-          const start = editor.document.positionAt(index);
-          const end = editor.document.positionAt(index + text.length);
-          ranges.push(new vscode.Range(start, end));
-        }
-        if (type !== -1) {
-          index += text.length;
-        }
-      }
-  
-      if (!decorationType) {
-        decorationType = createDecoration();
-      }
-      editor.setDecorations(decorationType, ranges);
-    }
+  if (!baseline || !targetUri) {
+    clearDecorations();
+    return;
   }
 
+  for (const editor of vscode.window.visibleTextEditors) {
+    if (editor.document.uri.toString() !== targetUri.toString()) continue;
+
+    const current = editor.document.getText();
+    const diffs = dmp.diff_main(baseline, current);
+    dmp.diff_cleanupSemantic(diffs);
+
+    const addedRanges: vscode.Range[] = [];
+    const removedRanges: vscode.Range[] = [];
+
+    let indexBaseline = 0;
+    let indexCurrent = 0;
+
+    for (const [type, text] of diffs) {
+      if (type === 1) {
+        // додане у current
+        const start = editor.document.positionAt(indexCurrent);
+        const end = editor.document.positionAt(indexCurrent + text.length);
+        addedRanges.push(new vscode.Range(start, end));
+        indexCurrent += text.length;
+      } else if (type === -1) {
+        // видалене з baseline — показуємо inline hint
+        const start = editor.document.positionAt(indexCurrent);
+        removedRanges.push(new vscode.Range(start, start));
+        indexBaseline += text.length;
+      } else {
+        indexBaseline += text.length;
+        indexCurrent += text.length;
+      }
+    }
+
+    if (!addedDecorationType) addedDecorationType = createAddedDecoration();
+    if (!removedDecorationType) removedDecorationType = createRemovedDecoration();
+
+    editor.setDecorations(addedDecorationType, addedRanges);
+    editor.setDecorations(removedDecorationType, removedRanges);
+
+    updateStatusBar(editor);
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
-  decorationType = createDecoration();
+  addedDecorationType = createAddedDecoration();
+  removedDecorationType = createRemovedDecoration();
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('selfReview.start', () => {
+    vscode.commands.registerCommand('selfReview.startForFile', () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showWarningMessage('Open a file to start Self Review.');
+        vscode.window.showWarningMessage('Відкрий файл для Self Review.');
         return;
       }
       baseline = editor.document.getText();
+      targetUri = editor.document.uri;
       updateDecorations();
-      updateStatusBar();
-      vscode.window.showInformationMessage('Self Review: baseline set. Edit and Approve or Reject.');
+      vscode.window.showInformationMessage(`Self Review: baseline встановлено для ${editor.document.fileName}`);
     }),
 
-    vscode.commands.registerCommand('selfReview.approve', () => {
+    vscode.commands.registerCommand('selfReview.approveForFile', () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
+      if (!editor || !targetUri || editor.document.uri.toString() !== targetUri.toString()) return;
       baseline = editor.document.getText();
       updateDecorations();
-      updateStatusBar();
-      vscode.window.showInformationMessage('Self Review: changes approved (new baseline).');
+      vscode.window.showInformationMessage('Self Review: зміни підтверджено (новий baseline).');
     }),
 
-    vscode.commands.registerCommand('selfReview.rejectBlock', () => {
+    vscode.commands.registerCommand('selfReview.rejectForFile', () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor || baseline === null) {
-        vscode.window.showWarningMessage('No baseline set or no editor open.');
-        return;
-      }
+      if (!editor || !baseline || !targetUri || editor.document.uri.toString() !== targetUri.toString()) return;
+
       editor.edit((editBuilder) => {
         const fullRange = new vscode.Range(
           editor.document.positionAt(0),
@@ -114,19 +151,19 @@ export function activate(context: vscode.ExtensionContext): void {
       }).then(() => {
         updateDecorations();
       });
-      vscode.window.showInformationMessage('Self Review: reverted to baseline.');
+      vscode.window.showInformationMessage('Self Review: відхилено, повернено до baseline.');
     }),
 
-    vscode.commands.registerCommand('selfReview.stop', () => {
+    vscode.commands.registerCommand('selfReview.stopForFile', () => {
       baseline = null;
+      targetUri = null;
       clearDecorations();
-      if (decorationType) {
-        decorationType.dispose();
-        decorationType = null;
-      }
-      decorationType = createDecoration();
+      addedDecorationType?.dispose();
+      removedDecorationType?.dispose();
+      addedDecorationType = createAddedDecoration();
+      removedDecorationType = createRemovedDecoration();
       updateStatusBar();
-      vscode.window.showInformationMessage('Self Review: stopped, baseline cleared.');
+      vscode.window.showInformationMessage('Self Review: зупинено, baseline очищено.');
     }),
 
     vscode.workspace.onDidChangeTextDocument(() => {
@@ -135,27 +172,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.window.onDidChangeActiveTextEditor(() => {
       updateDecorations();
-    }),
-
-    vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('selfReview.decorationBackgroundColor')) {
-        decorationType?.dispose();
-        decorationType = createDecoration();
-        updateDecorations();
-      }
-      if (e.affectsConfiguration('selfReview.statusBar')) {
-        updateStatusBar();
-      }
     })
   );
 
   context.subscriptions.push(statusBarItem);
-  updateStatusBar();
 }
 
 export function deactivate(): void {
-  decorationType?.dispose();
-  decorationType = null;
+  addedDecorationType?.dispose();
+  removedDecorationType?.dispose();
+  addedDecorationType = null;
+  removedDecorationType = null;
   statusBarItem?.dispose();
   statusBarItem = null;
 }
