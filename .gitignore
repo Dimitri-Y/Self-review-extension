@@ -1,0 +1,7 @@
+.vscode
+.cursorrules
+.cursorignore
+.cursorignore
+node_modules
+.env
+.DS_Store

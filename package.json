@@ -1,0 +1,101 @@
+{
+  "name": "self-review",
+  "displayName": "Self Review",
+  "description": "Review your own changes: set a baseline, see added lines highlighted, approve or reject changes.",
+  "version": "1.0.2",
+  "license": "ISC",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "main": "extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:selfReview.start",
+    "onCommand:selfReview.approve",
+    "onCommand:selfReview.rejectBlock",
+    "onCommand:selfReview.stop"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "selfReview.start",
+        "title": "Self Review: Start (set baseline)"
+      },
+      {
+        "command": "selfReview.approve",
+        "title": "Self Review: Approve changes (new baseline)"
+      },
+      {
+        "command": "selfReview.rejectBlock",
+        "title": "Self Review: Reject all (revert to baseline)"
+      },
+      {
+        "command": "selfReview.stop",
+        "title": "Self Review: Stop (clear baseline)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "selfReview.start",
+          "when": "editorTextFocus",
+          "group": "selfReview@1"
+        },
+        {
+          "command": "selfReview.approve",
+          "when": "editorTextFocus",
+          "group": "selfReview@2"
+        },
+        {
+          "command": "selfReview.rejectBlock",
+          "when": "editorTextFocus",
+          "group": "selfReview@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "selfReview.start"
+        },
+        {
+          "command": "selfReview.approve"
+        },
+        {
+          "command": "selfReview.rejectBlock"
+        },
+        {
+          "command": "selfReview.stop"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Self Review",
+      "properties": {
+        "selfReview.decorationBackgroundColor": {
+          "type": "string",
+          "default": "rgba(0, 255, 0, 0.15)",
+          "description": "Background color for added lines (CSS rgba or hex)."
+        },
+        "selfReview.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Self Review status in the status bar."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && npx @vscode/vsce package",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/diff-match-patch": "^1.0.36",
+    "@types/vscode": "^1.60.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "diff-match-patch": "^1.0.5"
+  }
+}
